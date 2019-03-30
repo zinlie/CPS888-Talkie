@@ -4,14 +4,15 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.io.BufferedReader;
 import java.io.DataInputStream;
-import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.PrintStream;
 import java.io.IOException;
 import java.net.Socket;
 import java.net.ServerSocket;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
@@ -26,6 +27,7 @@ public class Server extends JFrame implements ActionListener {
 
     private static Socket cSocket = null;
     private static ServerSocket sSocket = null;
+    private FileWriter fw = null;
 
     private JButton exitBtn;
     private JPanel mainPnl, consolePnl, exitPnl, lblPnl;
@@ -79,6 +81,10 @@ public class Server extends JFrame implements ActionListener {
         return this.console;
     }
 
+    public FileWriter getWriter() {
+        return fw;
+    }
+
     public static void main(String args[]) {
 
         Server server = new Server("Talkie - Server");
@@ -111,22 +117,14 @@ class ClientThread extends Thread {
     private Socket clientSocket = null;
     private final ArrayList<ClientThread> threads;
     private Server server;
-    private FileWriter fw;
+    private FileWriter fw, chatWriter;
     private BufferedReader br;
-    private String usr_contents;
-    
+    private String usr_contents = "";
+
     public ClientThread(Server server, Socket clientSocket, ArrayList<ClientThread> threads) {
         this.server = server;
         this.clientSocket = clientSocket;
         this.threads = threads;
-    }
-
-    public void createNewChat(String name) {
-        try {
-            fw = new FileWriter("users.txt", true);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
     }
 
     public void createUser(String name, String passwd) {
@@ -141,16 +139,6 @@ class ClientThread extends Thread {
         }
     }
 
-    public String fetchChats(String user) {
-        String chats = "";
-        try {
-            br = new BufferedReader(new FileReader("users.txt"));
-        } catch (FileNotFoundException e) {
-            e.printStackTrace();
-        }
-        return chats;
-    }
-
     public void run() {
         ArrayList<ClientThread> threads = this.threads;
 
@@ -159,10 +147,11 @@ class ClientThread extends Thread {
             boolean passCheck = false, user_found = false;
             String name = "", passwd = "", line = "";
 
+            is = new DataInputStream(clientSocket.getInputStream());
+            os = new PrintStream(clientSocket.getOutputStream());
+
             while (!passCheck) {
 
-                is = new DataInputStream(clientSocket.getInputStream());
-                os = new PrintStream(clientSocket.getOutputStream());
                 os.println("//***// Enter your username to login. //***//");
                 name = is.readLine().trim();
 
@@ -171,7 +160,7 @@ class ClientThread extends Thread {
 
                 br = new BufferedReader(new FileReader("users.txt"));
 
-                while (true) {
+                do {
                     line = br.readLine().trim();
 
                     if (line.equals("usr_end")) {
@@ -186,23 +175,35 @@ class ClientThread extends Thread {
 
                     if (name.equals(split[0]) && passwd.equals(split[1])) {
                         passCheck = true;
+                        user_found = true;
                         break;
                     }
-                    if (!passCheck && user_found) {
-                        os.println("//***// Password incorrect. Please try again. //***//");
-                        usr_contents = "";
-                        user_found = false;
-                    }
+                } while (!(line.equals("usr_end")));
+
+                if (!passCheck && user_found) {
+                    os.println("//***// Password incorrect. Please try again. //***//");
+                    usr_contents = "";
                 }
-                if (!passCheck && !user_found) {
-                    os.println("//***// New user " + name + " has created an account. //***//");
-                    createUser(name, passwd);
+                if (!user_found) {
                     break;
                 }
+
             }
-            server.getConsole().append("User " + name + " has connected.\n");
+            
+            if (!user_found) {
+                    os.println("//***// New user " + name + " has created an account. //***//");
+                    createUser(name, passwd);
+                }
+
+            server.getConsole().append(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Calendar.getInstance().getTime()) + ": User " + name + " has connected.\n");
 
             os.println("//***// Welcome to the group chat, " + name + "! //***//");
+
+            BufferedReader history = new BufferedReader(new FileReader("chat_history.txt"));
+            String history_line;
+            while ((history_line = history.readLine()) != null) {
+                os.println(history_line);
+            }
 
             for (int i = 0; i < threads.size(); i++) {
                 if (threads.get(i) != null && threads.get(i) != this) {
@@ -212,23 +213,25 @@ class ClientThread extends Thread {
             while (true) {
                 String txtline = is.readLine();
                 if (txtline.startsWith("/quit")) {
-                    server.getConsole().append("User " + name + " has disconnected.");
+                    server.getConsole().append(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Calendar.getInstance().getTime()) + ": User " + name + " has disconnected.\n");
                     break;
                 }
 
                 for (int i = 0; i < threads.size(); i++) {
                     if (threads.get(i) != null) {
-                        threads.get(i).os.println(name + ": " + txtline);
+                        threads.get(i).os.println(new SimpleDateFormat("yyyy-MM-dd hh:mm a:").format(Calendar.getInstance().getTime()) + " @" + name + ": " + txtline);
+                        chatWriter = new FileWriter("chat_history.txt", true);
+                        chatWriter.write(new SimpleDateFormat("yyyy-MM-dd hh:mm a:").format(Calendar.getInstance().getTime()) + " @" + name + ": " + txtline + "\n");
+                        chatWriter.close();
                     }
                 }
             }
             for (int i = 0; i < threads.size(); i++) {
                 if (threads.get(i) != null && threads.get(i) != this) {
-                    threads.get(i).os.println("//***// User " + name
-                            + " left the group chat room //***//");
+                    threads.get(i).os.println("//***// User " + name + " has left the group chat. //***//");
                 }
             }
-            os.println("*** Bye " + name + " ***");
+            os.println("CODE101");
 
             //Remove deprecated threads from the ArrayList
             for (int i = 0; i < threads.size(); i++) {

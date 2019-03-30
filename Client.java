@@ -141,9 +141,9 @@ public class Client extends JFrame implements Runnable, ActionListener {
 
                     buf = null;
                 }
-                /*
-         * Close the output stream, close the input stream, close the socket.
-                 */
+                
+          //Close the input/output streams and close the socket.
+                
                 wr.close();
                 rd.close();
                 cSocket.close();
@@ -155,15 +155,12 @@ public class Client extends JFrame implements Runnable, ActionListener {
 
     // Create a thread to read from the server.
     public void run() {
-        /*
-     * Keep on reading from the socket till we receive "Bye" from the
-     * server. Once we received that then we want to break.
-         */
+    //Break loop when code 101 is received from the server (TERMINATE).
         String responseLine;
         try {
             while ((responseLine = rd.readLine()) != null) {
                 getConsole().append(responseLine + "\n");
-                if (responseLine.indexOf("*** Bye") != -1) {
+                if (responseLine.indexOf("CODE101") != -1) {
                     break;
                 }
             }
